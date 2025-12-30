@@ -4777,10 +4777,6 @@ function PlayPageClient() {
         }
       });
 
-      artPlayerRef.current.on('pause', () => {
-        saveCurrentPlayProgress();
-      });
-
       if (artPlayerRef.current?.video) {
         ensureVideoSource(
           artPlayerRef.current.video as HTMLVideoElement,

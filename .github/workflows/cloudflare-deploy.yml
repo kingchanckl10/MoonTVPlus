@@ -13,6 +13,7 @@ concurrency:
 permissions:
   contents: read
   deployments: write
+  packages: write
 
 jobs:
   deploy:

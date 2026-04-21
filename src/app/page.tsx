@@ -2,7 +2,7 @@
 
 'use client';
 
-import { Bot, ChevronRight, Link as LinkIcon, ListVideo, Music } from 'lucide-react';
+import { BookOpen, Bot, ChevronRight, Link as LinkIcon, ListVideo, Music } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -67,6 +67,7 @@ function HomeClient() {
   const [aiDefaultMessageNoVideo, setAiDefaultMessageNoVideo] = useState('你好！我是MoonTVPlus的AI影视助手。想看什么电影或剧集？需要推荐吗？');
   const [sourceSearchEnabled, setSourceSearchEnabled] = useState(true);
   const [musicEnabled, setMusicEnabled] = useState(false);
+  const [mangaEnabled, setMangaEnabled] = useState(false);
   const [showDirectPlayDialog, setShowDirectPlayDialog] = useState(false);
   const [directPlayUrl, setDirectPlayUrl] = useState('');
 
@@ -152,8 +153,16 @@ function HomeClient() {
   // 检查音乐功能是否启用
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const enabled = (window as any).RUNTIME_CONFIG?.TUNEHUB_ENABLED === true;
+      const enabled = !!(window as any).RUNTIME_CONFIG?.MUSIC_ENABLED;
       setMusicEnabled(enabled);
+    }
+  }, []);
+
+  // 检查漫画功能是否启用
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const enabled = !!(window as any).RUNTIME_CONFIG?.SUWAYOMI_ENABLED;
+      setMangaEnabled(enabled);
     }
   }, []);
 
@@ -224,24 +233,32 @@ function HomeClient() {
 
           if (moviesData.code === 200) {
             setHotMovies(moviesData.list);
-            setCache('homepage_movies', moviesData.list);
+            if (moviesData.list && moviesData.list.length > 0) {
+              setCache('homepage_movies', moviesData.list);
+            }
           }
           if (tvShowsData.code === 200) {
             setHotTvShows(tvShowsData.list);
-            setCache('homepage_tvshows', tvShowsData.list);
+            if (tvShowsData.list && tvShowsData.list.length > 0) {
+              setCache('homepage_tvshows', tvShowsData.list);
+            }
           }
           if (varietyShowsData.code === 200) {
             setHotVarietyShows(varietyShowsData.list);
-            setCache('homepage_variety', varietyShowsData.list);
+            if (varietyShowsData.list && varietyShowsData.list.length > 0) {
+              setCache('homepage_variety', varietyShowsData.list);
+            }
           }
           setBangumiCalendarData(bangumiCalendarData);
-          setCache('homepage_bangumi', bangumiCalendarData);
+          if (bangumiCalendarData && bangumiCalendarData.length > 0) {
+            setCache('homepage_bangumi', bangumiCalendarData);
+          }
 
           try {
             const duanjuResponse = await fetch('/api/duanju/recommends');
             if (duanjuResponse.ok) {
               const duanjuResult = await duanjuResponse.json();
-              if (duanjuResult.code === 200 && duanjuResult.data) {
+              if (duanjuResult.code === 200 && duanjuResult.data && duanjuResult.data.length > 0) {
                 setHotDuanju(duanjuResult.data);
                 setCache('homepage_duanju', duanjuResult.data);
               }
@@ -254,7 +271,7 @@ function HomeClient() {
             const response = await fetch('/api/tmdb/upcoming');
             if (response.ok) {
               const result = await response.json();
-              if (result.code === 200 && result.data) {
+              if (result.code === 200 && result.data && result.data.length > 0) {
                 const sorted = [...result.data].sort((a, b) => {
                   const dateA = new Date(a.release_date || '9999-12-31').getTime();
                   const dateB = new Date(b.release_date || '9999-12-31').getTime();
@@ -605,14 +622,24 @@ function HomeClient() {
                 <LinkIcon size={18} />
               </button>
 
-              {/* 音乐视听入口 */}
               {musicEnabled && (
                 <Link href='/music'>
                   <button
-                    className='p-2 rounded-lg text-green-500 hover:text-green-600 transition-colors'
+                    className='p-1.5 rounded-lg text-green-500 hover:text-green-600 transition-colors'
                     title='音乐视听'
                   >
-                    <Music size={20} />
+                    <Music size={18} />
+                  </button>
+                </Link>
+              )}
+
+              {mangaEnabled && (
+                <Link href='/manga'>
+                  <button
+                    className='p-1.5 rounded-lg text-emerald-500 hover:text-emerald-600 transition-colors'
+                    title='漫画展馆'
+                  >
+                    <BookOpen size={18} />
                   </button>
                 </Link>
               )}

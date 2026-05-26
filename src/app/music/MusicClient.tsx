@@ -3408,26 +3408,26 @@ export default function MusicClient({ children: _children }: { children?: React.
       {showSidebarDrawer && (
         <div className="fixed inset-0 z-[95]">
           <button
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
             onClick={() => setShowSidebarDrawer(false)}
             aria-label="关闭菜单"
           />
-          <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[86vw] flex-col border-r border-white/10 bg-zinc-950/98 px-4 py-5 shadow-2xl">
-            <div className="mb-6 flex items-center justify-between">
+          <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col border-r border-white/10 bg-zinc-950/80 backdrop-blur-xl px-5 py-6 shadow-[20px_0_40px_rgba(0,0,0,0.5)] animate-in slide-in-from-left duration-300 ease-out">
+            <div className="mb-8 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-green-500">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-emerald-600 text-white shadow-lg shadow-green-500/20">
                   <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
                   </svg>
                 </div>
                 <div>
-                  <div className="text-base font-bold text-white">音乐菜单</div>
-                  <div className="text-xs text-zinc-500">Music Navigation</div>
+                  <div className="text-lg font-bold text-white tracking-wide">音乐菜单</div>
+                  <div className="text-[10px] uppercase tracking-wider text-green-400/80">Music Navigation</div>
                 </div>
               </div>
               <button
                 onClick={() => setShowSidebarDrawer(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-zinc-400 hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white hover:rotate-90"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -3435,7 +3435,7 @@ export default function MusicClient({ children: _children }: { children?: React.
               </button>
             </div>
 
-            <nav className="space-y-2">
+            <nav className="space-y-3 relative z-10">
               {[
                 { key: 'rankings', label: '排行榜', href: '/music/rankings', icon: 'M3 4h18M8 8h13M3 12h18M8 16h13M3 20h18' },
                 { key: 'search', label: '搜索', href: `/music/search?source=${currentSource}`, icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
@@ -3451,33 +3451,46 @@ export default function MusicClient({ children: _children }: { children?: React.
                       setShowSidebarDrawer(false);
                       router.push(item.href);
                     }}
-                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all ${
+                    className={`group flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-all duration-300 ${
                       active
-                        ? 'border-green-500/40 bg-green-500/15 text-white'
-                        : 'border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                        ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/5 text-white shadow-inner border border-green-500/20'
+                        : 'bg-transparent text-zinc-400 hover:bg-white/5 hover:text-white border border-transparent'
                     }`}
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
-                    </svg>
-                    <span className="text-sm font-medium">{item.label}</span>
+                    <div className={`flex items-center justify-center transition-colors ${active ? 'text-green-400' : 'text-zinc-500 group-hover:text-white'}`}>
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={item.icon} />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold">{item.label}</span>
+                    {active && (
+                      <div className="ml-auto w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-pulse" />
+                    )}
                   </button>
                 );
               })}
             </nav>
 
-            <button
-              onClick={() => {
-                setShowSidebarDrawer(false);
-                router.push('/');
-              }}
-              className="mt-auto flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              <span className="text-sm font-medium">返回主页</span>
-            </button>
+            <div className="mt-auto relative z-10 pt-6">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <button
+                onClick={() => {
+                  setShowSidebarDrawer(false);
+                  router.push('/');
+                }}
+                className="group flex w-full items-center gap-4 rounded-2xl border border-white/5 bg-white/5 px-4 py-3.5 text-left text-zinc-400 transition-all duration-300 hover:bg-white/10 hover:text-white hover:border-white/10 hover:shadow-lg"
+              >
+                <div className="flex items-center justify-center text-zinc-500 group-hover:text-white transition-colors">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                </div>
+                <span className="text-sm font-semibold">返回主页</span>
+              </button>
+            </div>
+            
+            {/* Ambient Background Effect */}
+            <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-green-500/10 blur-[80px]" />
           </aside>
         </div>
       )}

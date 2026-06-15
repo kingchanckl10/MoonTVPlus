@@ -3,6 +3,8 @@
 const QUARK_SHARE_API_BASE = 'https://drive-h.quark.cn/1/clouddrive';
 const QUARK_DRIVE_API_BASE = 'https://drive-pc.quark.cn/1/clouddrive';
 const QUARK_QUERY = 'pr=ucpro&fr=pc';
+const QUARK_API_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch';
 
 export interface QuarkShareLinkInfo {
   pwdId: string;
@@ -15,6 +17,7 @@ export interface QuarkShareItem {
   dir: boolean;
   shareFidToken?: string;
   pdirFid?: string;
+  size?: number;
 }
 
 export interface QuarkTransferTaskResult {
@@ -25,6 +28,22 @@ export interface QuarkTransferTaskResult {
   skipped?: boolean;
   reused?: boolean;
 }
+
+export interface QuarkShareVideoListResult {
+  title: string;
+  shareId: string;
+  shareToken: string;
+  files: Array<{
+    fid: string;
+    name: string;
+    size?: number;
+    shareFidToken?: string;
+    pdirFid?: string;
+  }>;
+}
+
+export type QuarkPlayMode = 'direct_first' | 'transcode_first';
+export type QuarkRangeWindow = { start: number; end: number; total: number };
 
 const VIDEO_EXTENSIONS = [
   '.mp4',
@@ -55,10 +74,16 @@ function getHeaders(cookie: string): HeadersInit {
   return {
     'content-type': 'application/json',
     cookie,
-    origin: 'https://pan.quark.cn',
     referer: 'https://pan.quark.cn/',
-    'user-agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+    'user-agent': QUARK_API_USER_AGENT,
+  };
+}
+
+export function getQuarkPlayHeaders(cookie: string): Record<string, string> {
+  return {
+    cookie,
+    referer: 'https://pan.quark.cn/',
+    'user-agent': QUARK_API_USER_AGENT,
   };
 }
 
@@ -205,6 +230,7 @@ async function fetchShareFolderItems(
     shareFidToken:
       item.share_fid_token || item.fid_token || item.share_token || undefined,
     pdirFid: String(item.pdir_fid || pdirFid || '0'),
+    size: Number(item.size || 0),
   }));
 }
 
@@ -273,9 +299,61 @@ async function findDirectoryByName(
   ) || null;
 }
 
+async function findDriveFileInFolder(
+  cookie: string,
+  parentFid: string,
+  input: { fileName?: string; size?: number }
+): Promise<any | null> {
+  const fileName = input.fileName?.trim();
+  if (!fileName) return null;
+
+  const items = await fetchAllDriveFolderItems(cookie, parentFid);
+  return items.find((item: any) => {
+    const isDir = Boolean(item.dir || item.is_dir || item.file_type === 0);
+    if (isDir) return false;
+    const itemName = String(item.file_name || item.name || '');
+    if (itemName !== fileName) return false;
+    if (input.size && Number(item.size || 0) > 0) {
+      return Number(item.size || 0) === input.size;
+    }
+    return true;
+  }) || null;
+}
+
 export async function validateQuarkCookieReadable(cookie: string): Promise<void> {
   const safeCookie = assertQuarkCookieHeaderSafe(cookie);
   await fetchDriveFolderItems(safeCookie, '0');
+}
+
+export async function listQuarkShareVideos(
+  shareUrl: string,
+  cookie: string,
+  passcode = ''
+): Promise<QuarkShareVideoListResult> {
+  const safeCookie = assertQuarkCookieHeaderSafe(cookie);
+  const share = parseQuarkShareUrl(shareUrl, passcode);
+  const { stoken, shareTitle } = await fetchShareToken(safeCookie, share);
+  const allItems = await collectShareItemsRecursive(safeCookie, share.pwdId, stoken, '0');
+  const files = allItems
+    .filter((item) => !item.dir && isVideoFile(item.fileName))
+    .map((item) => ({
+      fid: item.fid,
+      name: item.fileName,
+      size: item.size,
+      shareFidToken: item.shareFidToken,
+      pdirFid: item.pdirFid,
+    }));
+
+  if (files.length === 0) {
+    throw new Error('分享中没有可播放的视频文件');
+  }
+
+  return {
+    title: shareTitle || '夸克网盘立即播放',
+    shareId: share.pwdId,
+    shareToken: stoken,
+    files,
+  };
 }
 
 async function createDriveFolder(
@@ -536,4 +614,238 @@ export async function createQuarkInstantPlayFolder(
     targetPath,
     folderName,
   };
+}
+
+export async function ensureQuarkPlayFolder(
+  cookie: string,
+  playTempSavePath: string,
+  shareId: string,
+  title?: string
+): Promise<{ folderFid: string; folderPath: string; folderName: string }> {
+  const safeCookie = assertQuarkCookieHeaderSafe(cookie);
+  const tempRoot = await ensureQuarkDrivePath(safeCookie, playTempSavePath);
+  const folderName = buildInstantPlayFolderName(shareId, title);
+  const existedFolder = await findDirectoryByName(safeCookie, tempRoot.fid, folderName);
+  if (existedFolder) {
+    return {
+      folderFid: String(existedFolder.fid || existedFolder.file_id),
+      folderPath: joinPath(tempRoot.path, folderName),
+      folderName,
+    };
+  }
+
+  const folderFid = await createDriveFolder(safeCookie, tempRoot.fid, folderName);
+  return {
+    folderFid,
+    folderPath: joinPath(tempRoot.path, folderName),
+    folderName,
+  };
+}
+
+export async function saveQuarkShareFile(
+  cookie: string,
+  input: {
+    shareId: string;
+    shareToken: string;
+    fileId: string;
+    fileName?: string;
+    size?: number;
+    shareFileToken?: string;
+    playFolderFid: string;
+  }
+): Promise<string> {
+  const safeCookie = assertQuarkCookieHeaderSafe(cookie);
+
+  const existedFile = await findDriveFileInFolder(safeCookie, input.playFolderFid, {
+    fileName: input.fileName,
+    size: input.size,
+  });
+  if (existedFile) {
+    return String(existedFile.fid || existedFile.file_id);
+  }
+
+  const taskId = await submitSaveTask(
+    safeCookie,
+    { pwdId: input.shareId, passcode: '' },
+    input.shareToken,
+    input.playFolderFid,
+    [
+      {
+        fid: input.fileId,
+        fileName: input.fileName || '',
+        dir: false,
+        size: input.size,
+        shareFidToken: input.shareFileToken,
+      },
+    ]
+  );
+
+  if (!taskId) {
+    throw new Error('夸克转存任务创建失败');
+  }
+
+  for (let i = 0; i < 25; i += 1) {
+    const query = new URLSearchParams({
+      task_id: taskId,
+      retry_index: String(i),
+    });
+
+    const response = await fetch(buildApiUrl(QUARK_SHARE_API_BASE, '/task', query.toString()), {
+      method: 'GET',
+      headers: getHeaders(safeCookie),
+    });
+    const data = await parseJson(response);
+    ensureOk(data, '查询夸克任务状态失败');
+
+    const saveAsTopFids = data?.data?.save_as?.save_as_top_fids;
+    if (Array.isArray(saveAsTopFids) && saveAsTopFids.length > 0) {
+      return String(saveAsTopFids[0]);
+    }
+
+    const savedFile = await findDriveFileInFolder(safeCookie, input.playFolderFid, {
+      fileName: input.fileName,
+      size: input.size,
+    });
+    if (savedFile) {
+      return String(savedFile.fid || savedFile.file_id);
+    }
+
+    const status = data?.data?.status;
+    if (status === -1 || status === 'failed' || data?.data?.err_code) {
+      throw new Error(data?.data?.message || data?.data?.err_msg || '夸克任务执行失败');
+    }
+
+    if (status === 2 || status === 'finished' || status === 'success' || data?.data?.finished_at) {
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+
+  throw new Error('夸克转存结果获取失败');
+}
+
+export async function getQuarkPlayUrls(
+  cookie: string,
+  savedFileId: string,
+  playMode: QuarkPlayMode = 'transcode_first'
+): Promise<Array<{ name: string; url: string; priority: number }>> {
+  const safeCookie = assertQuarkCookieHeaderSafe(cookie);
+  const headers = getHeaders(safeCookie);
+  const urls: Array<{ name: string; url: string; priority: number }> = [];
+
+  try {
+    const response = await fetch(buildApiUrl(QUARK_DRIVE_API_BASE, '/file/download'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        fids: [savedFileId],
+      }),
+      cache: 'no-store',
+    });
+    const data = await parseJson(response);
+    ensureOk(data, '获取夸克下载地址失败');
+    const downloadUrl = data?.data?.[0]?.download_url;
+    if (downloadUrl) {
+      urls.push({
+        name: '原画',
+        url: String(downloadUrl),
+        priority: 9999,
+      });
+    }
+  } catch (error) {
+    console.warn('[quark] get original download url failed:', error);
+  }
+
+  try {
+    const response = await fetch(buildApiUrl(QUARK_DRIVE_API_BASE, '/file/v2/play'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        fid: savedFileId,
+        resolutions: 'normal,low,high,super,2k,4k',
+        supports: 'fmp4',
+      }),
+      cache: 'no-store',
+    });
+    const data = await parseJson(response);
+    ensureOk(data, '获取夸克转码地址失败');
+    const nameMap: Record<string, string> = {
+      FOUR_K: '4K',
+      SUPER: '超清',
+      HIGH: '高清',
+      NORMAL: '流畅',
+      LOW: '低清',
+    };
+    if (Array.isArray(data?.data?.video_list)) {
+      for (const video of data.data.video_list) {
+        const resolution = video?.video_info?.resoultion;
+        const playUrl = video?.video_info?.url;
+        const priority = Number(video?.video_info?.width || 0);
+        if (resolution && playUrl) {
+          urls.push({
+            name: nameMap[String(resolution)] || String(resolution),
+            url: String(playUrl),
+            priority,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[quark] get transcoding play url failed:', error);
+  }
+
+  const deduped = urls.filter((item, index, array) => array.findIndex((v) => v.url === item.url) === index);
+  deduped.sort((a, b) => {
+    if (playMode === 'transcode_first') {
+      if (a.name === '原画' && b.name !== '原画') return 1;
+      if (a.name !== '原画' && b.name === '原画') return -1;
+    }
+    return b.priority - a.priority;
+  });
+
+  if (deduped.length === 0) {
+    throw new Error('未获取到夸克播放地址');
+  }
+
+  return deduped;
+}
+
+function parseContentRangeHeader(contentRange: string | null): QuarkRangeWindow | null {
+  if (!contentRange) return null;
+  const match = contentRange.match(/^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i);
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const total = Number(match[3]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(total)) return null;
+  return { start, end, total };
+}
+
+export async function probeQuarkPlayRange(
+  url: string,
+  headers: Record<string, string>,
+  range?: string
+): Promise<{ response: Response; window: QuarkRangeWindow | null } | null> {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 300000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        ...headers,
+        ...(range ? { Range: range } : {}),
+      },
+      cache: 'no-store',
+      signal: abortController.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      return null;
+    }
+
+    const window = parseContentRangeHeader(response.headers.get('content-range'));
+    return { response, window };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
